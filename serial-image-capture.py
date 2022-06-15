@@ -13,6 +13,18 @@ import serial.tools.list_ports
 init_baud = 230400          
 max_refresh = 10        # Milliseconds
 
+# EIML constants for header
+# |     SOF     |  format  |   width   |   height  |
+# | xFF xA0 XFF | [1 byte] | [4 bytes] | [4 bytes] |
+EIML_HEADER_SIZE = 12
+EIML_SOF_SIZE = 3
+EIML_FORMAT_SIZE = 1
+EIML_WIDTH_SIZE = 4
+EIML_HEIGHT_SIZE = 4
+EIML_SOF_B64 = b'/6D/'
+EIML_RESERVED = 0
+EIML_RGB888 = 1
+
 #-------------------------------------------------------------------------------
 # Classes
 
@@ -156,16 +168,15 @@ class GUI:
         
         self.canvas.after(max_refresh, self.refresh_image)
 
-    def update_image(self, img_bytes):
+    def update_image(self, img):
         """Method to update the image in the cavas
         
         This will release a lock to notify the other thread that new image data
         is ready.
         """
     
-        # Convert bytes to image object
-        img_stream = io.BytesIO(img_bytes)
-        self.img = Image.open(img_stream)
+        # Save image to class member
+        self.img = img
         
         # Release lock to notify other thread that it can update the canvas
         self.img_mutex.release()
@@ -176,6 +187,7 @@ class ImageRxTask(threading.Thread):
     # Receiver state machine constants
     RX_STRING = 0
     RX_JPEG = 1
+    RX_EIML = 2
 
     def __init__(self, parent):
         """Constructor"""
@@ -241,10 +253,12 @@ class ImageRxTask(threading.Thread):
                         # Read those bytes
                         rx_buf = rx_buf + self.ser.read()
                     
-                        # Look for start of JPEG base64 header
+                        # Look for start of JPEG or EIML header
                         if rx_mode == self.RX_STRING:
                             if rx_buf == b'/9j/':
                                 rx_mode = self.RX_JPEG
+                            if rx_buf == EIML_SOF_B64:
+                                rx_mode = self.RX_EIML
                         
                         # Look for newline ('\n')
                         if rx_buf[-1] == 10:
@@ -266,8 +280,49 @@ class ImageRxTask(threading.Thread):
                                 # Attempt to decode image and display in GUI
                                 try:
                                     img_dec = base64.b64decode(rx_buf)
-                                    self.gui.update_image(img_dec)
+                                    img_stream = io.BytesIO(img_dec)
+                                    img = Image.open(img_stream)
+                                    self.gui.update_image(img)
                                 except:
+                                    pass
+                                    
+                            # If we're recording the raw image data, display it
+                            elif rx_mode == self.RX_EIML:
+                                rx_mode = self.RX_STRING
+                                
+                                # Remove \r\n at the end
+                                rx_buf = rx_buf[:-2]
+                                
+                                # Attempt to decode image and display in GUI
+                                try:
+                                    # Decode message
+                                    msg_dec = base64.b64decode(rx_buf)
+                                    
+                                    # print(msg_dec[3])
+                                    # print(int.from_bytes(msg_dec[4:8], 'little'))
+                                    # print(int.from_bytes(msg_dec[8:12], 'little'))
+                                    
+                                    # Extract info from header
+                                    idx = EIML_SOF_SIZE
+                                    format = msg_dec[idx]
+                                    idx += EIML_FORMAT_SIZE                                       
+                                    width = int.from_bytes(msg_dec[idx:(idx + EIML_WIDTH_SIZE)], 
+                                                                                        'little')
+                                    idx += EIML_WIDTH_SIZE
+                                    height = int.from_bytes(msg_dec[idx:(idx + EIML_HEIGHT_SIZE)],
+                                                                                        'little')
+                                    idx += EIML_HEIGHT_SIZE
+                                    
+                                    # Create image and update GUI
+                                    if format == EIML_RGB888:
+                                        img = Image.frombytes(  'RGB', 
+                                                                (width, height), 
+                                                                msg_dec[idx:], 
+                                                                'raw')
+                                    self.gui.update_image(img)
+                                    
+                                except:
+                                    print(idx)
                                     pass
                             
                             # Clear buffer
