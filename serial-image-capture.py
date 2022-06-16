@@ -23,7 +23,8 @@ EIML_WIDTH_SIZE = 4
 EIML_HEIGHT_SIZE = 4
 EIML_SOF_B64 = b'/6D/'
 EIML_RESERVED = 0
-EIML_RGB888 = 1
+EIML_GRAYSCALE = 1
+EIML_RGB888 = 2
 
 #-------------------------------------------------------------------------------
 # Classes
