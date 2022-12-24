@@ -31,44 +31,40 @@
  */
 
 #include <TinyMLShield.h>
-#include "base64.h"             // Used to convert data to Base64 encoding
+#include "base64.h"  // Used to convert data to Base64 encoding
 
 // Preprocessor settings
-#define BAUD_RATE         230400          // Must match receiver application
-#define SEND_IMG          1               // Transmit raw RGB888 image over serial
+#define BAUD_RATE 230400  // Must match receiver application
+#define SEND_IMG 1        // Transmit raw RGB888 image over serial
 
 // Camera settings: https://github.com/tinyMLx/arduino-library/blob/main/src/OV767X_TinyMLx.h
-static const int cam_type = OV7675;       // OV7675
-static const int cam_resolution = QCIF;   // QQVGA, QCIF, QVGA, CIF, VGA
-static const int cam_format = RGB565;     // YUV422, RGB444, RGB565, GRAYSCALE
-static const int cam_fps = 1;             // 1, 5, 10, 15, 30
-static const int cam_width = 176;         // Width of resolution
-static const int cam_height = 144;        // Height of resolution
-static const int cam_bytes_per_pixel = 2;
+#define CAM_TYPE OV7675       // Supported: OV7675
+#define CAM_RESOLUTION QVGA   // Supported: QQVGA, QCIF, QVGA, CIF, VGA
+#define CAM_FORMAT RGB565  // Supported: RGB565, GRAYSCALE
+#define CAM_FPS 5             // Supported: 1, 5
 
 // Other image settings
-static const int scale_width = 176;
-static const int scale_height = 64;
-static const int crop_width = 64;
-static const int crop_height = 64;
+static const int scale_width = 80;
+static const int scale_height = 60;
+static const int crop_width = 60;
+static const int crop_height = 60;
 static const int rgb888_bytes_per_pixel = 3;
+static const int grayscale_bytes_per_pixel = 1;
 
 // EIML constants
 static const char EIML_HEADER_SIZE = 12;
 static const char EIML_SOF_SIZE = 3;
-static const char EIML_SOF[] = {0xFF, 0xA0, 0xFF};
+static const char EIML_SOF[] = { 0xFF, 0xA0, 0xFF };
 
 // EIML formats
-typedef enum
-{
+typedef enum {
   EIML_RESERVED = 0,
   EIML_GRAYSCALE = 1,
   EIML_RGB888 = 2
 } EimlFormat;
 
 // Return codes for image manipulation
-typedef enum
-{
+typedef enum {
   EIML_OK = 0,
   EIML_ERROR = 1
 } EimlRet;
@@ -76,8 +72,7 @@ typedef enum
 // Transmission header for raw image (must convert nicely to base64)
 // |     SOF     |  format  |   width   |   height  |
 // | xFF xA0 XFF | [1 byte] | [4 bytes] | [4 bytes] |
-typedef struct EimlHeader
-{
+typedef struct EimlHeader {
   uint8_t format;
   uint32_t width;
   uint32_t height;
@@ -91,22 +86,20 @@ static int cam_bytes_per_frame;
  */
 
 // Function: crop an image, store in another buffer
-EimlRet eiml_crop_center(const unsigned char *in_pixels, 
-                          unsigned int in_width, 
-                          unsigned int in_height,
-                          unsigned char *out_pixels,
-                          unsigned int out_width,
-                          unsigned int out_height,
-                          unsigned int bytes_per_pixel)
-{
+EimlRet eiml_crop_center(const unsigned char *in_pixels,
+                         unsigned int in_width,
+                         unsigned int in_height,
+                         unsigned char *out_pixels,
+                         unsigned int out_width,
+                         unsigned int out_height,
+                         unsigned int bytes_per_pixel) {
   unsigned int in_x_offset;
   unsigned int in_y_offset;
   unsigned int out_x_offset;
   unsigned int out_y_offset;
 
   // Verify crop is smaller
-  if ((in_width < out_width) || (in_height < out_height))
-  {
+  if ((in_width < out_width) || (in_height < out_height)) {
     return EIML_ERROR;
   }
 
@@ -114,23 +107,20 @@ EimlRet eiml_crop_center(const unsigned char *in_pixels,
   unsigned int out_buf_len = out_width * out_height;
 
   // Go through each row
-  for (unsigned int y = 0; y < out_height; y++)
-  {
-    in_y_offset = bytes_per_pixel * in_width * 
+  for (unsigned int y = 0; y < out_height; y++) {
+    in_y_offset = bytes_per_pixel * in_width * \
                   ((in_height - out_height) / 2 + y);
     out_y_offset = bytes_per_pixel * out_width * y;
 
     // Go through each pixel in each row
-    for (unsigned int x = 0; x < out_width; x++) 
-    {
+    for (unsigned int x = 0; x < out_width; x++) {
       in_x_offset = bytes_per_pixel * ((in_width - out_width) / 2 + x);
       out_x_offset = bytes_per_pixel * x;
 
       // go through each byte in each pixel
-      for (unsigned int b = 0; b < bytes_per_pixel; b++)
-      {
-        out_pixels[out_y_offset + out_x_offset + b] = 
-                                  in_pixels[in_y_offset + in_x_offset + b];
+      for (unsigned int b = 0; b < bytes_per_pixel; b++) {
+        out_pixels[out_y_offset + out_x_offset + b] =
+          in_pixels[in_y_offset + in_x_offset + b];
       }
     }
   }
@@ -139,14 +129,13 @@ EimlRet eiml_crop_center(const unsigned char *in_pixels,
 }
 
 // Function: scale image using nearest neighber
-EimlRet eiml_scale( const unsigned char *in_pixels, 
-                    unsigned int in_width, 
-                    unsigned int in_height,
-                    unsigned char *out_pixels,
-                    unsigned int out_width,
-                    unsigned int out_height,
-                    unsigned int bytes_per_pixel)
-{
+EimlRet eiml_scale(const unsigned char *in_pixels,
+                   unsigned int in_width,
+                   unsigned int in_height,
+                   unsigned char *out_pixels,
+                   unsigned int out_width,
+                   unsigned int out_height,
+                   unsigned int bytes_per_pixel) {
   unsigned int in_x_offset;
   unsigned int in_y_offset;
   unsigned int out_x_offset;
@@ -157,34 +146,32 @@ EimlRet eiml_scale( const unsigned char *in_pixels,
   // Compute ratio between input and output widths/heights (fixed point)
   unsigned long ratio_x = (in_width << 16) / out_width;
   unsigned long ratio_y = (in_height << 16) / out_height;
-  
+
   // Loop through each row
-  for (unsigned int y = 0; y < out_height; y++)
-  {
+  for (unsigned int y = 0; y < out_height; y++) {
+    
     // Find which pixel to sample from original image in y direction
     src_y = (y * ratio_y) >> 16;
     src_y = (src_y < in_height) ? src_y : in_height - 1;
-  
+
     // Calculate buffer offsets for y
     in_y_offset = bytes_per_pixel * in_width * src_y;
     out_y_offset = bytes_per_pixel * out_width * y;
 
     // Go through each pixel in each row
-    for (unsigned int x = 0; x < out_width; x++) 
-    {
-      // Find which pixel to sample from original image in x direction 
+    for (unsigned int x = 0; x < out_width; x++) {
+      // Find which pixel to sample from original image in x direction
       src_x = int(x * ratio_x) >> 16;
       src_x = (src_x < in_width) ? src_x : in_width;
-  
+
       // Calculate buffer offsets for x
       in_x_offset = bytes_per_pixel * src_x;
       out_x_offset = bytes_per_pixel * x;
-        
+
       // Copy pixels from source image to destination
-      for (unsigned int b = 0; b < bytes_per_pixel; b++)
-      {
-        out_pixels[out_y_offset + out_x_offset + b] = 
-                  in_pixels[in_y_offset + in_x_offset + b];
+      for (unsigned int b = 0; b < bytes_per_pixel; b++) {
+        out_pixels[out_y_offset + out_x_offset + b] =
+          in_pixels[in_y_offset + in_x_offset + b];
       }
     }
   }
@@ -193,21 +180,18 @@ EimlRet eiml_scale( const unsigned char *in_pixels,
 }
 
 // Function: Convert RGB565 to RGB888
-EimlRet eiml_rgb565_to_rgb888( const unsigned char *in_pixels,
-                                unsigned char *out_pixels,
-                                unsigned int num_pixels)
-{
+EimlRet eiml_rgb565_to_rgb888(const unsigned char *in_pixels,
+                              unsigned char *out_pixels,
+                              unsigned int num_pixels) {
   unsigned char r;
   unsigned char g;
   unsigned char b;
 
   // Go through each pixel
-  for (unsigned int i = 0; i < num_pixels; i++)
-  {
+  for (unsigned int i = 0; i < num_pixels; i++) {
     // Get RGB values
     r = in_pixels[2 * i] & 0xF8;
-    g = (in_pixels[2 * i] << 5) | 
-        ((in_pixels[(2 * i) + 1] & 0xE0) >> 3);
+    g = (in_pixels[2 * i] << 5) | ((in_pixels[(2 * i) + 1] & 0xE0) >> 3);
     b = in_pixels[(2 * i) + 1] << 3;
 
     // Copy RGB values to new buffer
@@ -220,28 +204,24 @@ EimlRet eiml_rgb565_to_rgb888( const unsigned char *in_pixels,
 }
 
 // Function: generate header
-EimlRet eiml_generate_header(EimlHeader header, unsigned char *out_header)
-{
+EimlRet eiml_generate_header(EimlHeader header, unsigned char *out_header) {
   // Copy SOF
-  for (int i = 0; i < EIML_SOF_SIZE; i++)
-  {
+  for (int i = 0; i < EIML_SOF_SIZE; i++) {
     out_header[i] = EIML_SOF[i];
   }
 
- // Copy format
- out_header[EIML_SOF_SIZE] = header.format;
+  // Copy format
+  out_header[EIML_SOF_SIZE] = header.format;
 
- // Copy width and height (keep little endianness)
- for (int i = 0; i < 4; i++)
- {
-  out_header[EIML_SOF_SIZE + 1 + i] = (header.width >> (i * 8)) & 0xFF;
- }
- for (int i = 0; i < 4; i++)
- {
-  out_header[EIML_SOF_SIZE + 5 + i] = (header.height >> (i * 8)) & 0xFF;
- }
+  // Copy width and height (keep little endianness)
+  for (int i = 0; i < 4; i++) {
+    out_header[EIML_SOF_SIZE + 1 + i] = (header.width >> (i * 8)) & 0xFF;
+  }
+  for (int i = 0; i < 4; i++) {
+    out_header[EIML_SOF_SIZE + 5 + i] = (header.height >> (i * 8)) & 0xFF;
+  }
 
- return EIML_OK;
+  return EIML_OK;
 }
 
 /*******************************************************************************
@@ -253,16 +233,18 @@ void setup() {
   // Wait for serial to connect
   Serial.begin(BAUD_RATE);
   while (!Serial);
+  delay(500);
 
   // Initialize TinyML shield
   initializeShield();
 
   // Initialize the OV7675 camera
-  if (!Camera.begin(cam_resolution, cam_format, cam_fps, cam_type)) {
+  if (!Camera.begin(CAM_RESOLUTION, CAM_FORMAT, CAM_FPS, CAM_TYPE)) {
     Serial.println("Failed to initialize camera");
     while (1);
   }
-  cam_bytes_per_frame = Camera.width() * Camera.height() * Camera.bytesPerPixel();
+  cam_bytes_per_frame = Camera.width() * Camera.height() * \
+                        Camera.bytesPerPixel();
 }
 
 void loop() {
@@ -270,13 +252,16 @@ void loop() {
   static EimlRet eiml_ret;
 
   // Crop the image as a square in the center of the frame
-  static int scale_img_bytes = scale_width * scale_height * cam_bytes_per_pixel;
-  static int crop_img_bytes = crop_width * crop_height * cam_bytes_per_pixel;
-  static int rgb888_img_bytes = scale_width * scale_height * rgb888_bytes_per_pixel;
+  static int scale_img_bytes = scale_width * scale_height * \
+                                Camera.bytesPerPixel();
+  static int crop_img_bytes = crop_width * crop_height * \
+                              Camera.bytesPerPixel();
+  static int xmit_img_bytes = 0;
 
   // Create capture buffer
   uint8_t *cam_img;
-  cam_img = (uint8_t *)malloc(cam_width * cam_height * cam_bytes_per_pixel * sizeof(char));
+  cam_img = (uint8_t *)malloc(Camera.width() * Camera.height() * \
+            Camera.bytesPerPixel() * sizeof(char));
   if (!cam_img) {
     Serial.println("Could not allocate camera buffer");
     return;
@@ -284,7 +269,8 @@ void loop() {
 
   // Create scale buffer
   uint8_t *scale_img;
-  scale_img = (uint8_t *)malloc(scale_width * scale_height * cam_bytes_per_pixel * sizeof(char));
+  scale_img = (uint8_t *)malloc(scale_width * scale_height * \
+              Camera.bytesPerPixel() * sizeof(char));
   if (!scale_img) {
     Serial.println("Could not allocate scale buffer");
     return;
@@ -293,14 +279,14 @@ void loop() {
   // Capture frame
   Camera.readFrame(cam_img);
 
-  // Scale image (skew to offset OV767X natural skew)
+  // Scale image
   eiml_ret = eiml_scale(cam_img,
-                        cam_width,
-                        cam_height,
+                        Camera.width(),
+                        Camera.height(),
                         scale_img,
                         scale_width,
                         scale_height,
-                        cam_bytes_per_pixel);
+                        Camera.bytesPerPixel());
   if (eiml_ret != EIML_OK) {
     Serial.println("Image scaling error");
     return;
@@ -311,7 +297,8 @@ void loop() {
 
   // Create crop image buffer
   uint8_t *crop_img;
-  crop_img = (uint8_t *)malloc(crop_width * crop_height * cam_bytes_per_pixel * sizeof(char));
+  crop_img = (uint8_t *)malloc(crop_width * crop_height * \
+              Camera.bytesPerPixel() * sizeof(char));
   if (!crop_img) {
     Serial.println("Could not allocate crop buffer");
     return;
@@ -324,7 +311,7 @@ void loop() {
                               crop_img,
                               crop_width,
                               crop_height,
-                              cam_bytes_per_pixel);
+                              Camera.bytesPerPixel());
   if (eiml_ret != EIML_OK) {
     Serial.println("Image cropping error");
     return;
@@ -333,45 +320,92 @@ void loop() {
   // Free scale image buffer
   free(scale_img);
 
-  // Create RGB888 image buffer
-  uint8_t *rgb888_img;
-  rgb888_img = (uint8_t *)malloc(crop_width * crop_width * rgb888_bytes_per_pixel * sizeof(char));
-  if (!rgb888_img) {
-    Serial.println("Could not allocate RGB888 buffer");
-    return;
-  }
+  // Convert image to correct format for transmission
+  uint8_t *xmit_img;
+  switch(CAM_FORMAT) {
+    case RGB565:
 
-  // Convert cropped image to RGB888
-  eiml_ret = eiml_rgb565_to_rgb888(crop_img, rgb888_img, crop_width * crop_width);
-  if (eiml_ret != EIML_OK) {
-    Serial.println("Image conversion error");
-    return;
+      // Calculate number of transmission bytes
+      xmit_img_bytes = crop_width * crop_height * rgb888_bytes_per_pixel;
+
+      // Create output image buffer
+      xmit_img = (uint8_t *)malloc(xmit_img_bytes * sizeof(char));
+      if (!xmit_img) {
+        Serial.println("Could not allocate xmit buffer");
+        return;
+      }
+
+      // Convert cropped image to RGB888
+      eiml_ret = eiml_rgb565_to_rgb888(crop_img, xmit_img, crop_width * \
+                  crop_height);
+      if (eiml_ret != EIML_OK) {
+        Serial.println("Image conversion error");
+        return;
+      }
+
+      break;
+
+    case GRAYSCALE:
+
+      // Calculate number of transmission bytes
+      xmit_img_bytes = crop_width * crop_height * grayscale_bytes_per_pixel;
+
+      // Create output image buffer
+      xmit_img = (uint8_t *)malloc(xmit_img_bytes * sizeof(char));
+      if (!xmit_img) {
+        Serial.println("Could not allocate xmit buffer");
+        return;
+      }
+
+      // OV767X library uses 2 bytes per pixel, so just keep first pixel
+      for (unsigned int i = 0; i < (crop_width * crop_height); i++) {
+        xmit_img[i] = crop_img[Camera.bytesPerPixel() * i];
+      }
+
+      break;
+
+    default:
+      Serial.println("Color format not supported");
+      return;
   }
 
   // Free crop image buffer
   free(crop_img);
 
+  // //***TEST***
+  // Serial.print("0x");
+  // Serial.print(xmit_img[0], HEX);
+  // Serial.print(" 0x");
+  // Serial.print(xmit_img[1], HEX);
+  // Serial.print(" 0x");
+  // Serial.println(xmit_img[2], HEX);
+  // free(xmit_img);
+
   // Create encoded message buffer
-  uint32_t enc_len = (rgb888_img_bytes + 2) / 3 * 4;
+  uint32_t enc_len = (xmit_img_bytes + 2) / 3 * 4;
   unsigned char *enc_buf;
-  enc_buf = (unsigned char*)malloc((enc_len + 1) * sizeof(unsigned char));
+  enc_buf = (unsigned char *)malloc((enc_len + 1) * sizeof(unsigned char));
   if (!enc_buf) {
     Serial.println("Could not allocate encoded message buffer");
     return;
   }
 
-  // Convert scaled RGB888 image to base64
-  unsigned int num = encode_base64(rgb888_img, rgb888_img_bytes, enc_buf);
+  // Convert scaled image to base64
+  unsigned int num = encode_base64(xmit_img, xmit_img_bytes, enc_buf);
 
   // Free RGB888 image buffer
-  free(rgb888_img);
-  
+  free(xmit_img);
+
   // Send encoded image out over serial
 #if SEND_IMG
 
   // Construct header
   EimlHeader header;
-  header.format = EIML_RGB888;
+  if (CAM_FORMAT == GRAYSCALE) {
+    header.format = EIML_GRAYSCALE;
+  } else {
+    header.format = EIML_RGB888;
+  }
   header.width = crop_width;
   header.height = crop_width;
 
@@ -388,8 +422,8 @@ void loop() {
   num = encode_base64(header_buf, EIML_HEADER_SIZE, enc_header);
 
   // Print header and image body
-  Serial.print((char*)enc_header);
-  Serial.println((char*)enc_buf);
+  Serial.print((char *)enc_header);
+  Serial.println((char *)enc_buf);
 #endif
 
   // Free buffers

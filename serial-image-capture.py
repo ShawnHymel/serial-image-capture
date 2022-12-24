@@ -320,6 +320,12 @@ class ImageRxTask(threading.Thread):
                                                                 (width, height), 
                                                                 msg_dec[idx:], 
                                                                 'raw')
+                                    elif format == EIML_GRAYSCALE:
+                                        img = Image.frombytes(  'L',
+                                                                (width, height),
+                                                                msg_dec[idx:],
+                                                                'raw')
+                                        img = img.convert(mode='RGB')
                                     self.gui.update_image(img)
                                     
                                 except:
