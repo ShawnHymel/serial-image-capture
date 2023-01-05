@@ -40,7 +40,7 @@
 // Camera settings: https://github.com/tinyMLx/arduino-library/blob/main/src/OV767X_TinyMLx.h
 #define CAM_TYPE OV7675       // Supported: OV7675
 #define CAM_RESOLUTION QVGA   // Supported: QQVGA, QCIF, QVGA, CIF, VGA
-#define CAM_FORMAT RGB565  // Supported: RGB565, GRAYSCALE
+#define CAM_FORMAT GRAYSCALE  // Supported: RGB565, GRAYSCALE
 #define CAM_FPS 5             // Supported: 1, 5
 
 // Other image settings

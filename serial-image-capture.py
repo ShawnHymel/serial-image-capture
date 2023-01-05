@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 import tkinter as tk
 import threading
 import time
@@ -10,8 +12,9 @@ import serial
 import serial.tools.list_ports
 
 # Settings
-init_baud = 230400          
-max_refresh = 10        # Milliseconds
+INIT_BAUD = 230400          
+MAX_REFRESH = 10        # Milliseconds
+EMBIGGEN_FACTOR = 2     # Scale image by this amount for viewport
 
 # EIML constants for header
 # |     SOF     |  format  |   width   |   height  |
@@ -61,45 +64,64 @@ class GUI:
         # TkInter variables
         self.var_port = tk.StringVar()
         self.var_baud = tk.IntVar()
-        self.var_baud.set(init_baud)
+        self.var_baud.set(INIT_BAUD)
+        self.var_big = tk.IntVar()
+        self.var_res = tk.StringVar()
+        self.var_res.set("Resolution: ")
         self.var_fps = tk.StringVar()
         self.var_fps.set("FPS: ")
+        self.var_label = tk.StringVar()
         
         # Create control widgets
         self.frame_control = tk.Frame(self.frame_main)
-        self.frame_connection = tk.Frame(self.frame_control)
-        self.label_port = tk.Label( self.frame_connection,
+        self.label_port = tk.Label( self.frame_control,
                                     text="Port:")
-        self.entry_port = tk.Entry( self.frame_connection,
+        self.entry_port = tk.Entry( self.frame_control,
                                     textvariable=self.var_port)
-        self.label_baud = tk.Label( self.frame_connection,
+        self.label_baud = tk.Label( self.frame_control,
                                     text="Baud:")
-        self.entry_baud = tk.Entry( self.frame_connection,
+        self.entry_baud = tk.Entry( self.frame_control,
                                     textvariable=self.var_baud)
         self.button_connect = tk.Button(    self.frame_control,
                                             text="Connect",
                                             padx=5,
                                             command=self.on_connect_clicked)
+        self.checkbox_big = tk.Checkbutton(self.frame_control,
+                                            text="Embiggen view",
+                                            variable=self.var_big,
+                                            onvalue=1,
+                                            offvalue=0)
+        self.label_res = tk.Label(  self.frame_control,
+                                    textvariable=self.var_res)
         self.label_fps = tk.Label(  self.frame_control, 
                                     textvariable=self.var_fps)
+        self.label_label = tk.Label(self.frame_control,
+                                    text="Label:")
+        self.entry_label = tk.Entry(self.frame_control,
+                                    textvariable=self.var_label)
         self.button_save = tk.Button(   self.frame_control, 
                                         text="Save Image", 
                                         padx=5,
                                         command=self.on_save_clicked)
 
         # Create canvas
-        self.canvas = tk.Canvas(self.frame_main, width=500, height=500)
+        self.canvas = tk.Canvas(self.frame_main, width=100, height=100)
+
+        # Lay out control frame on main frame
+        self.frame_control.grid(row=0, column=0, padx=5, pady=5, sticky=tk.NW)
 
         # Lay out widgets on control frame
-        self.frame_control.grid(row=0, column=0, padx=5, pady=5, sticky=tk.NW)
-        self.frame_connection.pack()
-        self.label_port.grid(row=0, column=0, padx=5, pady=5, sticky=tk.W)
-        self.entry_port.grid(row=0, column=1, padx=5, pady=5, sticky=tk.W)
-        self.label_baud.grid(row=1, column=0, padx=5, pady=5, sticky=tk.W)
-        self.entry_baud.grid(row=1, column=1, padx=5, pady=5, sticky=tk.W)
-        self.button_connect.pack()
-        self.label_fps.pack(anchor=tk.W)
-        self.button_save.pack()
+        self.label_port.grid(row=0, column=0, padx=5, pady=3, sticky=tk.W)
+        self.entry_port.grid(row=0, column=1, padx=5, pady=3, sticky=tk.W)
+        self.label_baud.grid(row=1, column=0, padx=5, pady=3, sticky=tk.W)
+        self.entry_baud.grid(row=1, column=1, padx=5, pady=3, sticky=tk.W)
+        self.button_connect.grid(row=2, column=0, columnspan=2, padx=5, pady=3)
+        self.checkbox_big.grid(row=3, column=0, columnspan=2, padx=5, pady=0, sticky=tk.W)
+        self.label_res.grid(row=4, column=0, columnspan=2, padx=5, pady=0, sticky=tk.W)
+        self.label_fps.grid(row=5, column=0, columnspan=2, padx=5, pady=0, sticky=tk.W)
+        self.label_label.grid(row=6, column=0, padx=5, pady=3, sticky=tk.W)
+        self.entry_label.grid(row=6, column=1, padx=5, pady=3, sticky=tk.W)
+        self.button_save.grid(row=7, column=0, columnspan=2, padx=5, pady=3)
 
         # Lay out canvas on main frame grid
         self.canvas.grid(row=0, column=1, padx=5, pady=5, sticky=tk.NW)
@@ -111,7 +133,7 @@ class GUI:
         self.img_mutex = threading.Lock()
         self.img_mutex.acquire()
         self.timestamp = time.monotonic()
-        self.canvas.after(max_refresh, self.refresh_image)
+        self.canvas.after(MAX_REFRESH, self.refresh_image)
         
     def __del__(self):
         """Desctructor: make sure we close that serial port!"""
@@ -150,24 +172,39 @@ class GUI:
         
             # If we're interrupted, just fail gracefully
             try:
-        
-                # Convert to TkInter image: class member to avoid garbage collection
+
+                # Get width and height
                 img_w, img_h = self.img.size
-                self.tk_img = ImageTk.PhotoImage(self.img)
+
+                # Resize image for display
+                if (int(self.var_big.get()) == 1):
+                    disp_w = EMBIGGEN_FACTOR * img_w
+                    disp_h = EMBIGGEN_FACTOR * img_h
+                    disp_img = self.img.resize((disp_w, disp_h))
+                else:
+                    disp_w = img_w
+                    disp_h = img_h
+                    disp_img = self.img
+        
+                # Convert to TkInter image class member to avoid garbage collection
+                self.tk_img = ImageTk.PhotoImage(disp_img)
 
                 #Show image on canvas
                 self.canvas.create_image(0, 0, anchor="nw", image=self.tk_img)
-                self.canvas.config(width=img_w, height=img_h)
-                
+                self.canvas.config(width=disp_w, height=disp_h)
+
                 # Update FPS
                 self.fps = 1 / (time.monotonic() - self.timestamp)
                 self.timestamp = time.monotonic()
                 self.var_fps.set("FPS: {:.1f}".format(self.fps))
+
+                # Update resolution
+                self.var_res.set("Resolution: {}x{}".format(img_w, img_h))
             
             except:
                 pass
         
-        self.canvas.after(max_refresh, self.refresh_image)
+        self.canvas.after(MAX_REFRESH, self.refresh_image)
 
     def update_image(self, img):
         """Method to update the image in the cavas
@@ -223,7 +260,8 @@ class ImageRxTask(threading.Thread):
         self.ser.baudrate=baud_rate
         
         # Say that we're trying here
-        print("Connecting to {} at a baud rate of {}".format(port, baud_rate))    
+        print("Connecting to {} at a baud rate of {}".format(port, baud_rate))
+
         # Try to open a connection
         try:
             self.ser.open()
@@ -349,4 +387,3 @@ if __name__ == "__main__":
     root.title("Serial Image Capture")
     main_ui = GUI(root)
     root.mainloop()
-    
