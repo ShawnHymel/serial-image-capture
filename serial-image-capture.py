@@ -1,10 +1,31 @@
 #!/usr/bin/env python3
 
+"""
+Serial Image Capture
+
+Simple GUI to display and save images received over a serial port. Images
+must be encoded in base64 with the appropriate EIML protocol header. 
+
+Required dependencies:
+
+    python -m pip install Pillow pyserial
+
+Run with:
+
+    python serial-image-capture.py
+
+Author: EdgeImpulse, Inc.
+Date: January 5, 2023
+License: Apache-2.0
+"""
+
 import tkinter as tk
 import threading
 import time
 import base64
 import io
+import uuid
+import os
 
 # Install with `python -m pip install Pillow pyserial`
 from PIL import Image, ImageTk
@@ -15,6 +36,7 @@ import serial.tools.list_ports
 INIT_BAUD = 230400          
 MAX_REFRESH = 10        # Milliseconds
 EMBIGGEN_FACTOR = 2     # Scale image by this amount for viewport
+IMG_EXT = ".png"        # Extension for image (.png or .jpg)
 
 # EIML constants for header
 # |     SOF     |  format  |   width   |   height  |
@@ -42,11 +64,16 @@ class GUI:
     If another thread calls update_ method(s), data is passed safely between
     threads using a mutex.
     """
+
+    # Return codes
+    OK = 0
+    ERR = 1
     
     def __init__(self, root):
         """Constructor"""
     
         self.root = root
+        self.connected = False
         
         # Start image Rx thread
         self.rx_task = ImageRxTask(self)
@@ -150,15 +177,47 @@ class GUI:
             return
         
         # Attempt to connect to device
-        self.rx_task.connect(self.var_port.get(), baud_rate)
+        res = self.rx_task.connect(self.var_port.get(), baud_rate)
+        if (res == self.rx_task.OK):
+            self.connected = True
+        else:
+            self.connected = False
         
     def on_save_clicked(self):
-        """Save current image to the disk drive
-        
-        %%%TODO: this needs to be implemented
-        """
-        print("ERROR: the save functionality is not implemented yet")
+        """Save current image to the disk drive"""
+
+        # Set focus (just press 'enter' to capture more photos)
         self.button_save.focus_set()
+
+        # Only capture image if connected to device
+        if self.connected:
+
+            # Generate unique filename (last 12 characters from uuid4 method)
+            # and make sure it does not conflict with any existing filenames
+            label = str(self.entry_label.get())
+            while True:
+                uid = str(uuid.uuid4())[-12:]
+                if label == "":
+                    filename = uid + IMG_EXT
+                else:
+                    filename = label + "." + uid + IMG_EXT
+                if not os.path.exists(filename):
+                    break
+
+            # Ensure there's only acceptable characters in the filename
+            filename = "".join(i for i in filename if i not in "\/:*?<>|")
+
+            # Save file
+            try:
+                self.img.save(filename)
+                print("Saved: " + filename)
+            except Exception as e:
+                print("ERROR:", e)
+        
+        # Do nothing if not connected
+        else:
+            print("ERROR: Not connected to capture device")
+        
 
     def refresh_image(self):
         """Update canvas periodically
@@ -227,6 +286,10 @@ class ImageRxTask(threading.Thread):
     RX_JPEG = 1
     RX_EIML = 2
 
+    # Return codes
+    OK = 0
+    ERR = 1
+
     def __init__(self, parent):
         """Constructor"""
 
@@ -265,8 +328,12 @@ class ImageRxTask(threading.Thread):
         # Try to open a connection
         try:
             self.ser.open()
+            ret = self.OK
         except Exception as e:
             print("ERROR:", e)
+            ret = self.ERR
+
+        return ret
             
     def close(self):
         """Close serial port"""
@@ -383,7 +450,15 @@ class ImageRxTask(threading.Thread):
 # Main
 
 if __name__ == "__main__":
+
+    # Initialize TkInter
     root = tk.Tk()
     root.title("Serial Image Capture")
+
+    # Allow for 'enter' as hotkey for interacting with buttons/checkbuttons
+    root.bind_class("Button", "<Key-Return>", lambda event: event.widget.invoke())
+    root.bind_class("Checkbutton", "<Key-Return>", lambda event: event.widget.toggle())
+
+    # Start GUI
     main_ui = GUI(root)
     root.mainloop()

@@ -1,36 +1,37 @@
 /**
  * Arduino Nano 33 BLE Sense image capture and transmit base64 over serial
  * 
- * Author: Shawn Hymel
- * Date: June 15, 2022
- * 
- * Based on work by Rui Santos at
- * https://RandomNerdTutorials.com/esp32-cam-take-photo-save-microsd-card
- * 
- * Important:
- *  - Install TinyMLShield Arduino library
- *  
- * License: MIT
- * Permission is hereby granted, free of charge, to any person obtaining a copy 
- * of this software and associated documentation files (the "Software"), to deal 
- * in the Software without restriction, including without limitation the rights 
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell 
- * copies of the Software, and to permit persons to whom the Software is 
- * furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in 
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
- * SOFTWARE.
+ * Connect an OV7670 or OV7675 camera to the Nano 33 BLE Sense as follows:
+ *  - 3.3 connected to 3.3
+ *  - GND connected GND
+ *  - SIOC connected to A5
+ *  - SIOD connected to A4
+ *  - VSYNC connected to 8
+ *  - HREF connected to A1
+ *  - PCLK connected to A0
+ *  - XCLK connected to 9
+ *  - D7 connected to 4
+ *  - D6 connected to 6
+ *  - D5 connected to 5
+ *  - D4 connected to 3
+ *  - D3 connected to 2
+ *  - D2 connected to 0 / RX
+ *  - D1 connected to 1 / TX
+ *  - D0 connected to 10
+ *
+ * Change the camera settings as desired. Upload this program to the Nano 33
+ * board. Run the display script with:
+ *
+ *  python serial-image-capture.py
+ *
+ * Use the GUI to connect to the Arduino board and display a live image feed.
+ *
+ * Author: Shawn Hymel (EdgeImpulse, Inc.)
+ * Date: January 8, 2023
+ * License: Apache-2.0 (apache.org/licenses/LICENSE-2.0)
  */
 
-#include <TinyMLShield.h>
+#include <Arduino_OV767X.h>
 #include "base64.h"  // Used to convert data to Base64 encoding
 
 // Preprocessor settings
@@ -38,7 +39,7 @@
 #define SEND_IMG 1        // Transmit raw RGB888 image over serial
 
 // Camera settings: https://github.com/tinyMLx/arduino-library/blob/main/src/OV767X_TinyMLx.h
-#define CAM_TYPE OV7675       // Supported: OV7675
+#define CAM_TYPE OV7675       // Supported: OV7670, OV7675
 #define CAM_RESOLUTION QVGA   // Supported: QQVGA, QCIF, QVGA, CIF, VGA
 #define CAM_FORMAT GRAYSCALE  // Supported: RGB565, GRAYSCALE
 #define CAM_FPS 5             // Supported: 1, 5
@@ -234,9 +235,6 @@ void setup() {
   Serial.begin(BAUD_RATE);
   while (!Serial);
   delay(500);
-
-  // Initialize TinyML shield
-  initializeShield();
 
   // Initialize the OV7675 camera
   if (!Camera.begin(CAM_RESOLUTION, CAM_FORMAT, CAM_FPS, CAM_TYPE)) {
