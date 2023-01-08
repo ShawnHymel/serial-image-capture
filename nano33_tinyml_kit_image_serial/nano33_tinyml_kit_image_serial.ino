@@ -36,7 +36,7 @@
 
 // Preprocessor settings
 #define BAUD_RATE 230400  // Must match receiver application
-#define SEND_IMG 1        // Transmit raw RGB888 image over serial
+#define SEND_IMG 1        // Transmit raw image over serial
 
 // Camera settings: https://github.com/tinyMLx/arduino-library/blob/main/src/OV767X_TinyMLx.h
 #define CAM_TYPE OV7675       // Supported: OV7670, OV7675
@@ -369,15 +369,6 @@ void loop() {
 
   // Free crop image buffer
   free(crop_img);
-
-  // //***TEST***
-  // Serial.print("0x");
-  // Serial.print(xmit_img[0], HEX);
-  // Serial.print(" 0x");
-  // Serial.print(xmit_img[1], HEX);
-  // Serial.print(" 0x");
-  // Serial.println(xmit_img[2], HEX);
-  // free(xmit_img);
 
   // Create encoded message buffer
   uint32_t enc_len = (xmit_img_bytes + 2) / 3 * 4;
