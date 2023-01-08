@@ -35,7 +35,7 @@ import serial.tools.list_ports
 # Settings
 INIT_BAUD = 230400          
 MAX_REFRESH = 10        # Milliseconds
-EMBIGGEN_FACTOR = 2     # Scale image by this amount for viewport
+EMBIGGEN_FACTOR = 4     # Scale image by this amount for viewport
 IMG_EXT = ".png"        # Extension for image (.png or .jpg)
 
 # EIML constants for header

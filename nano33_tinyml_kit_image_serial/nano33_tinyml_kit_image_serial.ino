@@ -45,10 +45,10 @@
 #define CAM_FPS 5             // Supported: 1, 5
 
 // Other image settings
-static const int scale_width = 80;
-static const int scale_height = 60;
-static const int crop_width = 60;
-static const int crop_height = 60;
+static const int scale_width = 40;
+static const int scale_height = 30;
+static const int crop_width = 30;
+static const int crop_height = 30;
 static const int rgb888_bytes_per_pixel = 3;
 static const int grayscale_bytes_per_pixel = 1;
 
